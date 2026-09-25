@@ -2,6 +2,15 @@ name: Auto assign
 
 on:
   workflow_call:
+    inputs:
+      ci-reviewer:
+        description: Reviewer requested on PRs touching CI/CD
+        type: string
+        default: matheoftne
+      ci-types:
+        description: Comma-separated commit types considered CI/CD
+        type: string
+        default: ci,build,chore,test
 
 permissions:
   contents: read
@@ -11,8 +20,55 @@ jobs:
   auto-assign:
     name: Add reviewers
     # Dependabot PRs get a read-only token and cannot request reviewers.
-    if: github.event.pull_request.user.login != 'dependabot[bot]'
+    # Only on open so reviewers who already approved are not re-requested on every push.
+    if: >-
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      contains(fromJSON('["opened", "ready_for_review", "reopened"]'), github.event.action)
     runs-on: ubuntu-latest
     steps:
       # Reads .github/auto_assign.yml from the calling repository.
       - uses: kentaro-m/auto-assign-action@0a2c53d3721e4c5cfcce6afd4014aecc337979f6 # v2.0.2
+
+  ci-reviewer:
+    name: Add CI/CD reviewer
+    if: >-
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          CI_REVIEWER: ${{ inputs.ci-reviewer }}
+          CI_TYPES: ${{ inputs.ci-types }}
+        with:
+          script: |
+            const reviewer = process.env.CI_REVIEWER;
+            const types = process.env.CI_TYPES.split(',').map((t) => t.trim()).filter(Boolean);
+            const pr = context.payload.pull_request;
+            const params = { ...context.repo, pull_number: pr.number };
+            const same = (login) => login.toLowerCase() === reviewer.toLowerCase();
+
+            if (same(pr.user.login)) {
+              core.info(`${reviewer} is the PR author, skipping.`);
+              return;
+            }
+
+            // Conventional Commits header: type(scope)!: description
+            const pattern = new RegExp(`^(${types.join('|')})(\\([^)]*\\))?!?:`);
+            const commits = await github.paginate(github.rest.pulls.listCommits, { ...params, per_page: 100 });
+            const subjects = [pr.title, ...commits.map((c) => c.commit.message.split('\n')[0])];
+            const match = subjects.find((s) => pattern.test(s));
+            if (!match) {
+              core.info(`No ${types.join('/')} title or commit found.`);
+              return;
+            }
+
+            const { data: requested } = await github.rest.pulls.listRequestedReviewers(params);
+            const reviews = await github.paginate(github.rest.pulls.listReviews, { ...params, per_page: 100 });
+            if (requested.users.some((u) => same(u.login)) || reviews.some((r) => r.user && same(r.user.login))) {
+              core.info(`${reviewer} is already requested or has reviewed.`);
+              return;
+            }
+
+            await github.rest.pulls.requestReviewers({ ...params, reviewers: [reviewer] });
+            core.info(`Requested ${reviewer} because of "${match}".`);
