@@ -27,7 +27,7 @@ jobs:
             echo "Jira issue key found in PR title: ${BASH_REMATCH[2]}"
             echo "valid=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::error title=Jira key missing::Add a Jira key to the PR title, e.g. 'feat(core): handle timeout [PROJECT-123]'"
+            echo "::error title=Jira key missing::Add a Jira key to the PR title, e.g. 'feat(core): handle timeout [T-ESP-...]'"
             echo "valid=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -59,7 +59,7 @@ jobs:
               marker,
               'Le titre de cette PR doit contenir une clé Jira.',
               '',
-              'Format attendu : `feat(core): handle timeout [PROJECT-123]`',
+              'Format attendu : `feat(core): handle timeout [T-ESP-...]`',
             ].join('\n');
 
             if (existing) {
