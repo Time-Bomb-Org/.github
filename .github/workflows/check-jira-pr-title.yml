@@ -12,33 +12,62 @@ permissions:
 jobs:
   jira-key:
     name: Require Jira key in PR title
+    if: ${{ github.event.pull_request }}
     runs-on: ubuntu-latest
+    concurrency:
+      group: jira-pr-title-${{ github.repository }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     steps:
       - name: Validate Jira key
         id: validate
-        continue-on-error: true
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           if [[ "$PR_TITLE" =~ (^|[^A-Z0-9])([A-Z][A-Z0-9]*-[0-9]+)([^A-Z0-9]|$) ]]; then
-            echo "Jira issue key found in PR title."
+            echo "Jira issue key found in PR title: ${BASH_REMATCH[2]}"
+            echo "valid=true" >> "$GITHUB_OUTPUT"
           else
             echo "::error title=Jira key missing::Add a Jira key to the PR title, e.g. 'feat(core): handle timeout [PROJECT-123]'"
-            exit 1
+            echo "valid=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Comment with the required format
-        if: ${{ steps.validate.outcome == 'failure' && github.event_name == 'pull_request' }}
+      - name: Create, update or remove the bot comment
         uses: actions/github-script@v7
+        env:
+          VALID: ${{ steps.validate.outputs.valid }}
         with:
           script: |
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: "Le titre de cette PR doit contenir une clé Jira.\n\nFormat attendu : `feat(core): handle timeout [PROJECT-123]`"
+            const marker = '<!-- jira-pr-title -->';
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100,
             });
+            const existing = comments.find(
+              (c) => c.user?.type === 'Bot' && c.body?.includes(marker),
+            );
+
+            if (process.env.VALID === 'true') {
+              if (existing) {
+                await github.rest.issues.deleteComment({ owner, repo, comment_id: existing.id });
+              }
+              return;
+            }
+
+            const body = [
+              marker,
+              'Le titre de cette PR doit contenir une clé Jira.',
+              '',
+              'Format attendu : `feat(core): handle timeout [PROJECT-123]`',
+            ].join('\n');
+
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
 
       - name: Fail when Jira key is missing
-        if: ${{ steps.validate.outcome == 'failure' }}
+        if: steps.validate.outputs.valid != 'true'
         run: exit 1
