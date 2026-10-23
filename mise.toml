@@ -1,0 +1,14 @@
+min_version = "2026.10.17"
+
+[settings.task]
+run_auto_install = false
+
+[tasks.doctor]
+description = "Vérifie Git et Bash sans modifier le clone"
+shell = "bash -c"
+run = '"$BASH" scripts/doctor.sh'
+
+[tasks.setup]
+description = "Active les hooks Git existants de ce clone"
+shell = "bash -c"
+run = '"$BASH" scripts/setup.sh'
