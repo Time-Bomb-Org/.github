@@ -6,6 +6,7 @@ trap 'rm -rf "$tmp"' EXIT
 clone="$tmp/clone with spaces"
 mkdir -p "$clone/scripts"
 cp "$root/scripts/doctor.sh" "$root/scripts/setup.sh" "$clone/scripts/"
+cp "$root/.gitattributes" "$clone/"
 cp -R "$root/.githooks" "$clone/"
 git -C "$clone" init -q
 git -C "$clone" add .

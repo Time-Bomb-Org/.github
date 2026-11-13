@@ -37,3 +37,8 @@ aucun lockfile vide n'est ajouté. `mise tasks ls` liste les tâches.
 Validation à effectuer avant fusion : `bash tests/tooling/setup.sh`, puis
 `mise run doctor` et `mise run setup` dans un clone de test, sur les plateformes
 concernées. Cette PR attend les tests et la validation de Thomas.
+
+Le workflow **Mise setup validation** teste Linux, macOS, Windows Git Bash
+et WSL lorsque la PR quitte le brouillon. Pour reproduire les contrôles dans
+un checkout de test : `bash scripts/validate-mise.sh`. Les opérations de setup
+sont effectuées dans des clones temporaires, supprimés en fin de validation.
