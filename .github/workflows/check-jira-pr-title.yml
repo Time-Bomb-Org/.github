@@ -18,23 +18,40 @@ jobs:
       group: jira-pr-title-${{ github.repository }}-${{ github.event.pull_request.number }}
       cancel-in-progress: true
     steps:
-      - name: Validate Jira key
+      - name: Validate PR title
         id: validate
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
+          # Byte-wise ranges, so [a-z] never matches uppercase letters.
+          LC_ALL: C
         run: |
-          if [[ "$PR_TITLE" =~ (^|[^A-Z0-9])([A-Z][A-Z0-9]*-[0-9]+)([^A-Z0-9]|$) ]]; then
-            echo "Jira issue key found in PR title: ${BASH_REMATCH[2]}"
-            echo "valid=true" >> "$GITHUB_OUTPUT"
+          # Same header rule as .githooks/commit-msg.
+          type_pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9][a-z0-9._/-]*\))?(!)?: .+'
+          key_pattern='(^|[^A-Z0-9])([A-Z][A-Z0-9]*-[0-9]+)([^A-Z0-9]|$)'
+          example='feat(core): handle timeout [SCRUM-123]'
+          echo "PR title: $PR_TITLE"
+
+          if [[ "$PR_TITLE" =~ $type_pattern ]]; then
+            echo "Conventional Commits type found: ${BASH_REMATCH[1]}"
+            echo "type=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::error title=Jira key missing::Add a Jira key to the PR title, e.g. 'feat(core): handle timeout [T-ESP-...]'"
-            echo "valid=false" >> "$GITHUB_OUTPUT"
+            echo "::error title=Type missing::Start the PR title with a lowercase type and an optional scope, e.g. '$example'"
+            echo "type=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ "$PR_TITLE" =~ $key_pattern ]]; then
+            echo "Jira issue key found in PR title: ${BASH_REMATCH[2]}"
+            echo "key=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error title=Jira key missing::Add a Jira key to the PR title, e.g. '$example'"
+            echo "key=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Create, update or remove the bot comment
         uses: actions/github-script@v7
         env:
-          VALID: ${{ steps.validate.outputs.valid }}
+          TYPE_OK: ${{ steps.validate.outputs.type }}
+          KEY_OK: ${{ steps.validate.outputs.key }}
         with:
           script: |
             const marker = '<!-- jira-pr-title -->';
@@ -48,18 +65,37 @@ jobs:
               (c) => c.user?.type === 'Bot' && c.body?.includes(marker),
             );
 
-            if (process.env.VALID === 'true') {
+            const typeOk = process.env.TYPE_OK === 'true';
+            const keyOk = process.env.KEY_OK === 'true';
+
+            if (typeOk && keyOk) {
               if (existing) {
                 await github.rest.issues.deleteComment({ owner, repo, comment_id: existing.id });
               }
               return;
             }
 
+            const problems = [];
+            if (!typeOk) {
+              problems.push(
+                '- **Type manquant ou mal écrit** : le titre doit commencer par un type en minuscules '
+                + '(`feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore` ou `revert`), '
+                + 'un scope facultatif entre parenthèses, puis `: ` et la description.',
+              );
+            }
+            if (!keyOk) {
+              problems.push('- **Clé Jira manquante** : ajoute la clé du ticket, par exemple `[SCRUM-123]`.');
+            }
+
             const body = [
               marker,
-              'Le titre de cette PR doit contenir une clé Jira.',
+              'Le titre de cette PR ne respecte pas le format `type(scope): description [CLÉ-JIRA]`.',
               '',
-              'Format attendu : `feat(core): handle timeout [T-ESP-...]`',
+              ...problems,
+              '',
+              'Exemple : `feat(core): handle timeout [SCRUM-123]`',
+              '',
+              'Corrige le titre : ce contrôle se relance tout seul et ce commentaire disparaît.',
             ].join('\n');
 
             if (existing) {
@@ -68,6 +104,6 @@ jobs:
               await github.rest.issues.createComment({ owner, repo, issue_number, body });
             }
 
-      - name: Fail when Jira key is missing
-        if: steps.validate.outputs.valid != 'true'
+      - name: Fail when the PR title is invalid
+        if: steps.validate.outputs.type != 'true' || steps.validate.outputs.key != 'true'
         run: exit 1
