@@ -22,7 +22,8 @@ merge générés par Git sont acceptés tels quels.
 Le workflow partagé `check-jira-pr-title.yml` exige un titre de PR de la forme
 `type(scope): description [CLÉ-JIRA]`, par exemple
 `feat(core): handle timeout [SCRUM-123]`. Le type suit la même règle que le
-hook `commit-msg`.
+hook `commit-msg`. Le titre `Revert "<titre d'origine>"` proposé par le bouton
+*Revert* de GitHub est aussi accepté ; la clé Jira du titre d'origine suffit.
 
 Le workflow partagé `label-pr.yml` pose le label de type déduit de ce titre et
 retire les autres labels de type quand le titre change. Il ne touche à aucun
@@ -35,7 +36,7 @@ autre label et ignore les PR Dependabot ou portant le label `dependencies`.
 | `docs` | `documentation` |
 | `ci`, `build` | `ci/cd` |
 | `test` | `test` |
-| `revert` | `revert` |
+| `revert`, ou titre `Revert "…"` de GitHub | `revert` |
 | `style`, `refactor`, `perf`, `chore` | aucun |
 
 Les labels doivent déjà exister dans le dépôt. Pour activer l'étiquetage, ajoute

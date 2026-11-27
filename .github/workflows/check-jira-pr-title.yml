@@ -27,12 +27,17 @@ jobs:
         run: |
           # Same header rule as .githooks/commit-msg.
           type_pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9][a-z0-9._/-]*\))?(!)?: .+'
+          # Title of the PRs opened by GitHub's Revert button.
+          revert_pattern='^Revert ".+"'
           key_pattern='(^|[^A-Z0-9])([A-Z][A-Z0-9]*-[0-9]+)([^A-Z0-9]|$)'
           example='feat(core): handle timeout [SCRUM-123]'
           echo "PR title: $PR_TITLE"
 
           if [[ "$PR_TITLE" =~ $type_pattern ]]; then
             echo "Conventional Commits type found: ${BASH_REMATCH[1]}"
+            echo "type=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$PR_TITLE" =~ $revert_pattern ]]; then
+            echo "GitHub revert title found."
             echo "type=true" >> "$GITHUB_OUTPUT"
           else
             echo "::error title=Type missing::Start the PR title with a lowercase type and an optional scope, e.g. '$example'"
@@ -80,7 +85,8 @@ jobs:
               problems.push(
                 '- **Type manquant ou mal écrit** : le titre doit commencer par un type en minuscules '
                 + '(`feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore` ou `revert`), '
-                + 'un scope facultatif entre parenthèses, puis `: ` et la description.',
+                + 'un scope facultatif entre parenthèses, puis `: ` et la description. '
+                + 'Les titres `Revert "…"` créés par le bouton Revert de GitHub sont aussi acceptés.',
               );
             }
             if (!keyOk) {

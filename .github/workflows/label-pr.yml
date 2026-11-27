@@ -25,6 +25,8 @@ jobs:
           script: |
             // Same header rule as .githooks/commit-msg.
             const pattern = /^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9][a-z0-9._/-]*\))?(!)?: .+/;
+            // Title of the PRs opened by GitHub's Revert button.
+            const githubRevert = /^Revert ".+"/;
             // style, refactor, perf and chore get no label ("Autres changements" in release.yml).
             const labelByType = {
               feat: 'enhancement',
@@ -46,10 +48,11 @@ jobs:
             }
 
             const match = pattern.exec(pr.title);
-            if (!match) {
+            const type = match ? match[1] : githubRevert.test(pr.title) ? 'revert' : undefined;
+            if (!type) {
               core.warning(`Title does not start with a Conventional Commits type: "${pr.title}"`);
             }
-            const wanted = match ? labelByType[match[1]] : undefined;
+            const wanted = labelByType[type];
 
             // Read labels again: the event payload may predate a previous run.
             const current = (await github.paginate(github.rest.issues.listLabelsOnIssue, { ...params, per_page: 100 }))
