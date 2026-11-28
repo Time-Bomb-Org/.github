@@ -1,0 +1,75 @@
+name: PR type label
+
+on:
+  workflow_call:
+
+permissions:
+  pull-requests: write
+
+jobs:
+  label:
+    name: Label PR from title type
+    # Dependabot PRs get a read-only token and are already labelled `dependencies`.
+    if: >-
+      github.event.pull_request &&
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      !contains(github.event.pull_request.labels.*.name, 'dependencies')
+    runs-on: ubuntu-latest
+    concurrency:
+      group: label-pr-${{ github.repository }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - name: Set the managed type label
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            // Same header rule as .githooks/commit-msg.
+            const pattern = /^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9][a-z0-9._/-]*\))?(!)?: .+/;
+            // Title of the PRs opened by GitHub's Revert button.
+            const githubRevert = /^Revert ".+"/;
+            // style, refactor, perf and chore get no label ("Autres changements" in release.yml).
+            const labelByType = {
+              feat: 'enhancement',
+              fix: 'fix',
+              docs: 'documentation',
+              ci: 'ci/cd',
+              build: 'ci/cd',
+              test: 'test',
+              revert: 'revert',
+            };
+            const managed = new Set(Object.values(labelByType));
+
+            const pr = context.payload.pull_request;
+            const params = { ...context.repo, issue_number: pr.number };
+
+            if (pr.user.login === 'dependabot[bot]' || pr.labels.some((l) => l.name === 'dependencies')) {
+              core.info('Dependency update, skipping.');
+              return;
+            }
+
+            const match = pattern.exec(pr.title);
+            const type = match ? match[1] : githubRevert.test(pr.title) ? 'revert' : undefined;
+            if (!type) {
+              core.warning(`Title does not start with a Conventional Commits type: "${pr.title}"`);
+            }
+            const wanted = labelByType[type];
+
+            // Read labels again: the event payload may predate a previous run.
+            const current = (await github.paginate(github.rest.issues.listLabelsOnIssue, { ...params, per_page: 100 }))
+              .map((l) => l.name);
+
+            for (const name of current.filter((n) => managed.has(n) && n !== wanted)) {
+              try {
+                await github.rest.issues.removeLabel({ ...params, name });
+                core.info(`Removed "${name}".`);
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
+            }
+
+            if (wanted && !current.includes(wanted)) {
+              await github.rest.issues.addLabels({ ...params, labels: [wanted] });
+              core.info(`Added "${wanted}".`);
+            } else {
+              core.info(wanted ? `"${wanted}" already set.` : 'No type label for this title.');
+            }

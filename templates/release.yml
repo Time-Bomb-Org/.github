@@ -1,0 +1,22 @@
+# Classement des notes de release générées par GitHub.
+# Source de référence : Time-Bomb-Org/.github, templates/release.yml. Garder les copies identiques.
+changelog:
+  categories:
+    - title: Fonctionnalités
+      labels: [enhancement]
+    - title: Corrections
+      labels: [fix, bug]
+    - title: CI et outillage
+      labels: [ci/cd]
+    - title: Documentation
+      labels: [documentation]
+    - title: Tests
+      labels: [test]
+    - title: Annulations
+      labels: [revert]
+    - title: Autres changements
+      labels: ["*"]
+      exclude:
+        labels: [dependencies]
+    - title: Mises à jour des dépendances
+      labels: [dependencies]
